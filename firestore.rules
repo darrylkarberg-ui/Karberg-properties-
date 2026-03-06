@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+
+    // User profile: { role: 'landlord'|'tenant', leaseId: <optional>, createdAt }
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    function isStaff() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'landlord' ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'manager'
+        );
+    }
+
+    function isTenant() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'tenant';
+    }
+
+    function tenantLeaseId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.leaseId;
+    }
+
+    // Staff-managed collections (landlord + property manager)
+    match /properties/{id} { allow read, write: if isStaff(); }
+    match /units/{id}      { allow read, write: if isStaff(); }
+
+    // Leases: landlord can manage; tenant can read only their own lease
+    match /leases/{leaseId} {
+      allow read: if isStaff() || (isTenant() && tenantLeaseId() == leaseId);
+      allow write: if isStaff();
+    }
+
+    // Rent ledger entries: tenant read-only for their lease; landlord manages
+    match /rentLedger/{entryId} {
+      allow read: if isStaff() || (isTenant() && resource.data.leaseId == tenantLeaseId());
+      allow create, update, delete: if isStaff();
+    }
+
+    // Tickets: tenant can create + read only their own lease; landlord full access
+    match /tickets/{ticketId} {
+      allow read: if isStaff() || (isTenant() && resource.data.leaseId == tenantLeaseId());
+      allow create: if isTenant() && request.resource.data.leaseId == tenantLeaseId();
+      allow update, delete: if isStaff();
+    }
+
+    // Lease codes: tenant can redeem; landlord manages codes.
+    // Doc: { leaseId, codeHash, active, createdAt, redeemedByUid?, redeemedAt? }
+    match /leaseCodes/{codeId} {
+      allow read: if false; // never list/read codes from clients
+      allow create, update, delete: if isStaff();
+    }
+  }
+}
