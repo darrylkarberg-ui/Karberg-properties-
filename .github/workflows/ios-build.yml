@@ -36,18 +36,28 @@ jobs:
       - name: Build (iPhone Simulator)
         run: |
           # Use a generic simulator destination to avoid device-name mismatches on GitHub runners.
+          set -o pipefail
           xcodebuild \
             -project KarbergProperties.xcodeproj \
             -scheme KarbergProperties \
             -sdk iphonesimulator \
             -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            | tee xcodebuild.log
 
-      - name: Upload build logs (if any)
+      - name: Upload xcodebuild log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
+          if-no-files-found: ignore
+
+      - name: Upload diagnostic reports (optional)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: xcodebuild-logs
+          name: xcode-diagnostic-reports
           path: ~/Library/Logs/DiagnosticReports
           if-no-files-found: ignore
