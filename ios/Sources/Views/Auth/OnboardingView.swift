@@ -71,7 +71,7 @@ struct OnboardingView: View {
       if role == .tenant {
         _ = try await FirebaseService.shared.redeemLeaseCode(code: leaseCode.trimmingCharacters(in: .whitespacesAndNewlines), uid: user.uid, email: email)
       } else {
-        try await FirebaseService.shared.upsertUser(uid: user.uid, user: AppUser(role: .manager, email: email, displayName: nil, leaseId: nil, createdAt: nil, updatedAt: nil))
+        try await FirebaseService.shared.upsertUser(uid: user.uid, user: AppUser(role: .manager, email: email))
       }
       await session.loadProfile()
     } catch {
