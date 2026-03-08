@@ -1,20 +1,28 @@
 import SwiftUI
 
 struct RootView: View {
+  @StateObject private var session = SessionStore()
+
   var body: some View {
-    NavigationStack {
-      VStack(spacing: 12) {
-        Text("Karberg Properties")
-          .font(.title.bold())
-
-        Text("Bootstrap build")
-          .foregroundStyle(.secondary)
-
-        // TODO: Auth gate (login / signup)
-        // TODO: Role routing (staff vs tenant)
+    Group {
+      if session.user == nil {
+        AuthView()
+      } else if session.isLoading {
+        ProgressView("Loading…")
+      } else if session.profile == nil {
+        NavigationStack {
+          OnboardingView()
+        }
+      } else if let profile = session.profile {
+        if profile.role.isStaff {
+          StaffTabView()
+        } else {
+          TenantTabView()
+        }
       }
-      .padding()
     }
+    .environmentObject(session)
+    .task { session.start() }
   }
 }
 

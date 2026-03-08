@@ -53,8 +53,23 @@ service cloud.firestore {
     // Lease codes: tenant can redeem; landlord manages codes.
     // Doc: { leaseId, codeHash, active, createdAt, redeemedByUid?, redeemedAt? }
     match /leaseCodes/{codeId} {
-      allow read: if false; // never list/read codes from clients
-      allow create, update, delete: if isStaff();
+      // Allow tenants to GET a single code doc if they know the id, but never LIST codes.
+      allow get: if signedIn();
+      allow list: if false;
+
+      // Staff can fully manage codes.
+      allow create, delete: if isStaff();
+
+      // Allow a signed-in user to redeem an active, unredeemed code.
+      // (They can only set redeemedByUid/redeemedAt; leaseId/active must stay unchanged.)
+      allow update: if isStaff() || (
+        signedIn() &&
+        resource.data.active == true &&
+        resource.data.redeemedByUid == null &&
+        request.resource.data.leaseId == resource.data.leaseId &&
+        request.resource.data.active == resource.data.active &&
+        request.resource.data.redeemedByUid == request.auth.uid
+      );
     }
   }
 }
