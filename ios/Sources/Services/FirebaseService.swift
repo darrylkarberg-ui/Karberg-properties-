@@ -1,7 +1,6 @@
 import Foundation
 import FirebaseAuth
 import FirebaseFirestore
-import FirebaseFirestoreSwift
 import FirebaseStorage
 
 final class FirebaseService {
@@ -21,20 +20,20 @@ final class FirebaseService {
 
   func fetchUser(uid: String) async throws -> AppUser? {
     let snap = try await userDocRef(uid: uid).getDocument()
-    guard snap.exists else { return nil }
-    return try snap.data(as: AppUser.self)
+    guard let data = snap.data() else { return nil }
+    return AppUser(data: data)
   }
 
   func upsertUser(uid: String, user: AppUser) async throws {
-    try userDocRef(uid: uid).setData(from: user, merge: true)
+    try await userDocRef(uid: uid).setData(user.toData(), merge: true)
   }
 
   // MARK: - Lease
 
   func fetchLease(leaseId: String) async throws -> Lease? {
     let snap = try await db.collection("leases").document(leaseId).getDocument()
-    guard snap.exists else { return nil }
-    return try snap.data(as: Lease.self)
+    guard let data = snap.data() else { return nil }
+    return Lease(id: snap.documentID, data: data)
   }
 
   func listLeaseDocs(leaseId: String) async throws -> [LeaseDoc] {
@@ -42,7 +41,9 @@ final class FirebaseService {
       .whereField("leaseId", isEqualTo: leaseId)
       .getDocuments()
 
-    return try snap.documents.map { try $0.data(as: LeaseDoc.self) }
+    return snap.documents.compactMap { d in
+      LeaseDoc(id: d.documentID, data: d.data())
+    }
   }
 
   // MARK: - Tickets
@@ -52,7 +53,8 @@ final class FirebaseService {
       .whereField("leaseId", isEqualTo: leaseId)
       .order(by: "createdAt", descending: true)
       .getDocuments()
-    return try snap.documents.map { try $0.data(as: Ticket.self) }
+
+    return snap.documents.compactMap { Ticket(id: $0.documentID, data: $0.data()) }
   }
 
   func listOpenTicketsForStaff(limit: Int = 50) async throws -> [Ticket] {
@@ -61,7 +63,8 @@ final class FirebaseService {
       .order(by: "createdAt", descending: true)
       .limit(to: limit)
       .getDocuments()
-    return try snap.documents.map { try $0.data(as: Ticket.self) }
+
+    return snap.documents.compactMap { Ticket(id: $0.documentID, data: $0.data()) }
   }
 
   func updateTicketStatus(ticketId: String, status: TicketStatus, staffNote: String?) async throws {
@@ -75,19 +78,14 @@ final class FirebaseService {
 
   func createTicket(leaseId: String, createdByUid: String, category: TicketCategory, description: String, photos: [TicketPhoto]) async throws {
     let doc = db.collection("tickets").document()
-    let ticket = Ticket(
-      docId: doc.documentID,
+    let data = Ticket.createData(
       leaseId: leaseId,
-      category: category.rawValue,
+      category: category,
       description: description,
-      status: TicketStatus.submitted.rawValue,
       photos: photos,
-      staffNote: nil,
-      createdByUid: createdByUid,
-      createdAt: nil,
-      updatedAt: nil
+      createdByUid: createdByUid
     )
-    try doc.setData(from: ticket, merge: true)
+    try await doc.setData(data, merge: true)
   }
 
   // MARK: - Storage
@@ -106,15 +104,12 @@ final class FirebaseService {
   // MARK: - Lease Codes (redeem)
 
   /// Redeems a lease code that is stored as a document id under `leaseCodes/{code}`.
-  ///
-  /// NOTE: Requires Firestore rules to allow `get` for this doc id.
   func redeemLeaseCode(code: String, uid: String, email: String) async throws -> String {
     let codeRef = db.collection("leaseCodes").document(code)
     let snap = try await codeRef.getDocument()
-    guard snap.exists else {
+    guard let data = snap.data(), let leaseCode = LeaseCode(data: data) else {
       throw NSError(domain: "KarbergProperties", code: 404, userInfo: [NSLocalizedDescriptionKey: "Invalid lease code"])
     }
-    let leaseCode = try snap.data(as: LeaseCode.self)
     guard leaseCode.active else {
       throw NSError(domain: "KarbergProperties", code: 400, userInfo: [NSLocalizedDescriptionKey: "Lease code is inactive"])
     }
@@ -123,9 +118,9 @@ final class FirebaseService {
     }
 
     // Update user profile with leaseId
-    try await upsertUser(uid: uid, user: AppUser(role: .tenant, email: email, displayName: nil, leaseId: leaseCode.leaseId, createdAt: nil, updatedAt: nil))
+    try await upsertUser(uid: uid, user: AppUser(role: .tenant, email: email, leaseId: leaseCode.leaseId))
 
-    // Best effort mark code as redeemed (may require rule support)
+    // Mark code as redeemed (rules should allow this if unredeemed)
     do {
       try await codeRef.updateData([
         "redeemedByUid": uid,
@@ -133,7 +128,7 @@ final class FirebaseService {
         "updatedAt": FieldValue.serverTimestamp()
       ])
     } catch {
-      // Ignore if rules don't allow it; lease linking still works via user profile.
+      // ignore
     }
 
     // Best effort: set tenantUid/email on lease (staff-only in rules; ignore failure)

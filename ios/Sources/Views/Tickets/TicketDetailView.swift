@@ -90,7 +90,7 @@ struct TicketDetailView: View {
   }
 
   private func save() async {
-    guard let ticketId = ticket.docId else { return }
+    let ticketId = ticket.id
     updating = true
     defer { updating = false }
     error = nil

@@ -1,6 +1,4 @@
 import SwiftUI
-import FirebaseFirestore
-import FirebaseFirestoreSwift
 
 struct StaffPropertiesView: View {
   @State private var properties: [Property] = []
@@ -44,7 +42,9 @@ struct StaffPropertiesView: View {
 
     do {
       let snap = try await FirebaseService.shared.db.collection("properties").order(by: "name").getDocuments()
-      properties = try snap.documents.map { try $0.data(as: Property.self) }
+      properties = snap.documents.compactMap { d in
+        Property(id: d.documentID, data: d.data())
+      }
     } catch {
       self.error = error.localizedDescription
     }
@@ -84,17 +84,18 @@ struct StaffUnitsView: View {
   }
 
   private func load() async {
-    guard let propertyId = property.docId else { return }
     isLoading = true
     defer { isLoading = false }
     error = nil
 
     do {
       let snap = try await FirebaseService.shared.db.collection("units")
-        .whereField("propertyId", isEqualTo: propertyId)
+        .whereField("propertyId", isEqualTo: property.id)
         .order(by: "label")
         .getDocuments()
-      units = try snap.documents.map { try $0.data(as: Unit.self) }
+      units = snap.documents.compactMap { d in
+        Unit(id: d.documentID, data: d.data())
+      }
     } catch {
       self.error = error.localizedDescription
     }
@@ -144,20 +145,23 @@ struct StaffLeaseView: View {
   }
 
   private func load() async {
-    guard let unitId = unit.id else { return }
     isLoading = true
     defer { isLoading = false }
     error = nil
 
     do {
       let snap = try await FirebaseService.shared.db.collection("leases")
-        .whereField("unitId", isEqualTo: unitId)
+        .whereField("unitId", isEqualTo: unit.id)
         .limit(to: 1)
         .getDocuments()
-      lease = try snap.documents.first?.data(as: Lease.self)
+      if let first = snap.documents.first {
+        lease = Lease(id: first.documentID, data: first.data())
+      } else {
+        lease = nil
+      }
 
-      if let leaseId = lease?.docId {
-        docs = try await FirebaseService.shared.listLeaseDocs(leaseId: leaseId)
+      if let lease {
+        docs = try await FirebaseService.shared.listLeaseDocs(leaseId: lease.id)
       } else {
         docs = []
       }

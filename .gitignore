@@ -1,0 +1,9 @@
+# Node
+node_modules/
+
+# XcodeGen output
+*.xcodeproj/
+*.xcworkspace/
+
+# macOS
+.DS_Store
