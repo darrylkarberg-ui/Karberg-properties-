@@ -35,11 +35,13 @@ jobs:
 
       - name: Build (iPhone Simulator)
         run: |
+          # Use a generic simulator destination to avoid device-name mismatches on GitHub runners.
           xcodebuild \
             -project KarbergProperties.xcodeproj \
             -scheme KarbergProperties \
+            -sdk iphonesimulator \
             -configuration Debug \
-            -destination 'platform=iOS Simulator,name=iPhone 15' \
+            -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO
 
       - name: Upload build logs (if any)
