@@ -149,6 +149,14 @@ struct TicketPhoto {
   var contentType: String
   var filename: String
 
+  // Used when creating a new ticket locally (before saving to Firestore).
+  init(storagePath: String, contentType: String, filename: String) {
+    self.storagePath = storagePath
+    self.contentType = contentType
+    self.filename = filename
+  }
+
+  // Used when decoding a ticket coming back from Firestore.
   init?(data: [String: Any]) {
     guard let storagePath = data["storagePath"] as? String,
           let contentType = data["contentType"] as? String,
