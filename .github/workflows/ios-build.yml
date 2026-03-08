@@ -46,6 +46,16 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             | tee xcodebuild.log
 
+      - name: Upload generated Xcode project
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodeproj
+          path: |
+            KarbergProperties.xcodeproj
+            KarbergProperties.xcworkspace
+          if-no-files-found: ignore
+
       - name: Upload xcodebuild log
         if: always()
         uses: actions/upload-artifact@v4
